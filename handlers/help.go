@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"disrbot/utils"
+
 	"github.com/mymmrac/telego"
 	th "github.com/mymmrac/telego/telegohandler"
 	tu "github.com/mymmrac/telego/telegoutil"
@@ -20,6 +21,9 @@ func HelpHandler(bot *telego.Bot) th.Handler {
 			tu.InlineKeyboardRow(
 				tu.InlineKeyboardButton(utils.Messages[lang]["btn_carbon_info"]).WithCallbackData("explain_carbon"),
 			),
+			tu.InlineKeyboardRow(
+				tu.InlineKeyboardButton(utils.Messages[lang]["btn_replies_info"]).WithCallbackData("explain_replies"),
+			),
 		)
 
 		_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
@@ -35,26 +39,26 @@ func HelpHandler(bot *telego.Bot) th.Handler {
 func ExplainIDHandler(bot *telego.Bot) th.Handler {
 	return func(ctx *th.Context, update telego.Update) error {
 		cb := update.CallbackQuery
-		userLang := utils.GetLang(cb.From.ID)
+		lang := utils.GetLang(cb.From.ID)
 
 		keyboard := tu.InlineKeyboard(
 			tu.InlineKeyboardRow(
-				tu.InlineKeyboardButton(utils.Messages[userLang]["back_btn"]).WithCallbackData("back_to_help"),
+				tu.InlineKeyboardButton(utils.Messages[lang]["back_btn"]).WithCallbackData("back_to_help"),
 			),
 		)
 
-		_, err := bot.EditMessageText(context.Background(), &telego.EditMessageTextParams{
-			ChatID:    tu.ID(cb.Message.GetChat().ID),
-			MessageID: cb.Message.GetMessageID(),
-			Text:      utils.Messages[userLang]["id_description"],
+		_, _ = bot.EditMessageText(context.Background(), &telego.EditMessageTextParams{
+			ChatID:      tu.ID(cb.Message.GetChat().ID),
+			MessageID:   cb.Message.GetMessageID(),
+			Text:        utils.Messages[lang]["id_description"],
 			ReplyMarkup: keyboard,
-			ParseMode: telego.ModeMarkdown,
+			ParseMode:   telego.ModeMarkdown,
 		})
 
 		_ = bot.AnswerCallbackQuery(context.Background(), &telego.AnswerCallbackQueryParams{
 			CallbackQueryID: cb.ID,
 		})
-		return err
+		return nil
 	}
 }
 
@@ -70,13 +74,39 @@ func ExplainCarbonHandler(bot *telego.Bot) th.Handler {
 		)
 
 		_, _ = bot.EditMessageText(context.Background(), &telego.EditMessageTextParams{
-			ChatID:    tu.ID(cb.Message.GetChat().ID),
-			MessageID: cb.Message.GetMessageID(),
-			Text:      utils.Messages[lang]["carbon_description"],
+			ChatID:      tu.ID(cb.Message.GetChat().ID),
+			MessageID:   cb.Message.GetMessageID(),
+			Text:        utils.Messages[lang]["carbon_description"],
 			ReplyMarkup: keyboard,
-			ParseMode: telego.ModeMarkdown,
+			ParseMode:   telego.ModeMarkdown,
 		})
-		
+
+		_ = bot.AnswerCallbackQuery(context.Background(), &telego.AnswerCallbackQueryParams{
+			CallbackQueryID: cb.ID,
+		})
+		return nil
+	}
+}
+
+func ExplainRepliesHandler(bot *telego.Bot) th.Handler {
+	return func(ctx *th.Context, update telego.Update) error {
+		cb := update.CallbackQuery
+		lang := utils.GetLang(cb.From.ID)
+
+		keyboard := tu.InlineKeyboard(
+			tu.InlineKeyboardRow(
+				tu.InlineKeyboardButton(utils.Messages[lang]["back_btn"]).WithCallbackData("back_to_help"),
+			),
+		)
+
+		_, _ = bot.EditMessageText(context.Background(), &telego.EditMessageTextParams{
+			ChatID:      tu.ID(cb.Message.GetChat().ID),
+			MessageID:   cb.Message.GetMessageID(),
+			Text:        utils.Messages[lang]["replies_description"],
+			ReplyMarkup: keyboard,
+			ParseMode:   telego.ModeMarkdown,
+		})
+
 		_ = bot.AnswerCallbackQuery(context.Background(), &telego.AnswerCallbackQueryParams{
 			CallbackQueryID: cb.ID,
 		})
@@ -95,6 +125,9 @@ func BackToHelpHandler(bot *telego.Bot) th.Handler {
 			),
 			tu.InlineKeyboardRow(
 				tu.InlineKeyboardButton(utils.Messages[lang]["btn_carbon_info"]).WithCallbackData("explain_carbon"),
+			),
+			tu.InlineKeyboardRow(
+				tu.InlineKeyboardButton(utils.Messages[lang]["btn_replies_info"]).WithCallbackData("explain_replies"),
 			),
 		)
 
