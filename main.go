@@ -28,7 +28,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	updates, _ := bot.UpdatesViaLongPolling(ctx, nil)
+	updates, _ := bot.UpdatesViaLongPolling(ctx, &telego.GetUpdatesParams{
+		AllowedUpdates: []string{"message", "callback_query", "inline_query"},
+	})
 	bh, _ := th.NewBotHandler(bot, updates)
 
 	bh.Handle(handlers.StartHandler(bot), th.CommandEqual("start"))
@@ -38,6 +40,7 @@ func main() {
 	bh.Handle(handlers.ExplainIDHandler(bot), th.CallbackDataEqual("explain_id"))
 	bh.Handle(handlers.ExplainCarbonHandler(bot), th.CallbackDataEqual("explain_carbon"))
 	bh.Handle(handlers.ExplainRepliesHandler(bot), th.CallbackDataEqual("explain_replies"))
+	bh.Handle(handlers.ExplainVoicesHandler(bot), th.CallbackDataEqual("explain_voices"))
 	bh.Handle(handlers.BackToHelpHandler(bot), th.CallbackDataEqual("back_to_help"))
 
 	bh.Handle(handlers.IDHandler(bot), th.Or(
@@ -60,6 +63,17 @@ func main() {
 	bh.Handle(handlers.AddReplyHandler(bot), th.CommandEqual("addreply"))
 	bh.Handle(handlers.DelReplyHandler(bot), th.CommandEqual("delreply"))
 	bh.Handle(handlers.ListRepliesHandler(bot), th.CommandEqual("listreplies"))
+
+	bh.Handle(handlers.AddVoiceHandler(bot), th.CommandEqual("addvoice"))
+	bh.Handle(handlers.DelVoiceHandler(bot), th.CommandEqual("delvoice"))
+	bh.Handle(handlers.ListVoicesHandler(bot), th.CommandEqual("listvoices"))
+
+	bh.Handle(handlers.AddIpaHandler(bot), th.CommandEqual("addipa"))
+	bh.Handle(handlers.DelIpaHandler(bot), th.CommandEqual("delipa"))
+	bh.Handle(handlers.ListIpaHandler(bot), th.CommandEqual("listipa"))
+
+	bh.Handle(handlers.InlineVoiceHandler(bot), th.AnyInlineQuery())
+	bh.Handle(handlers.InlineIpaHandler(bot), th.AnyInlineQuery())
 
 	bh.Handle(handlers.StateHandler(bot), th.AnyMessage())
 

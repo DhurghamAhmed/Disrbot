@@ -24,6 +24,9 @@ func HelpHandler(bot *telego.Bot) th.Handler {
 			tu.InlineKeyboardRow(
 				tu.InlineKeyboardButton(utils.Messages[lang]["btn_replies_info"]).WithCallbackData("explain_replies"),
 			),
+			tu.InlineKeyboardRow(
+				tu.InlineKeyboardButton(utils.Messages[lang]["btn_voices_info"]).WithCallbackData("explain_voices"),
+			),
 		)
 
 		_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
@@ -54,7 +57,6 @@ func ExplainIDHandler(bot *telego.Bot) th.Handler {
 			ReplyMarkup: keyboard,
 			ParseMode:   telego.ModeMarkdown,
 		})
-
 		_ = bot.AnswerCallbackQuery(context.Background(), &telego.AnswerCallbackQueryParams{
 			CallbackQueryID: cb.ID,
 		})
@@ -80,7 +82,6 @@ func ExplainCarbonHandler(bot *telego.Bot) th.Handler {
 			ReplyMarkup: keyboard,
 			ParseMode:   telego.ModeMarkdown,
 		})
-
 		_ = bot.AnswerCallbackQuery(context.Background(), &telego.AnswerCallbackQueryParams{
 			CallbackQueryID: cb.ID,
 		})
@@ -106,7 +107,31 @@ func ExplainRepliesHandler(bot *telego.Bot) th.Handler {
 			ReplyMarkup: keyboard,
 			ParseMode:   telego.ModeMarkdown,
 		})
+		_ = bot.AnswerCallbackQuery(context.Background(), &telego.AnswerCallbackQueryParams{
+			CallbackQueryID: cb.ID,
+		})
+		return nil
+	}
+}
 
+func ExplainVoicesHandler(bot *telego.Bot) th.Handler {
+	return func(ctx *th.Context, update telego.Update) error {
+		cb := update.CallbackQuery
+		lang := utils.GetLang(cb.From.ID)
+
+		keyboard := tu.InlineKeyboard(
+			tu.InlineKeyboardRow(
+				tu.InlineKeyboardButton(utils.Messages[lang]["back_btn"]).WithCallbackData("back_to_help"),
+			),
+		)
+
+		_, _ = bot.EditMessageText(context.Background(), &telego.EditMessageTextParams{
+			ChatID:      tu.ID(cb.Message.GetChat().ID),
+			MessageID:   cb.Message.GetMessageID(),
+			Text:        utils.Messages[lang]["voices_description"],
+			ReplyMarkup: keyboard,
+			ParseMode:   telego.ModeMarkdown,
+		})
 		_ = bot.AnswerCallbackQuery(context.Background(), &telego.AnswerCallbackQueryParams{
 			CallbackQueryID: cb.ID,
 		})
@@ -129,6 +154,9 @@ func BackToHelpHandler(bot *telego.Bot) th.Handler {
 			tu.InlineKeyboardRow(
 				tu.InlineKeyboardButton(utils.Messages[lang]["btn_replies_info"]).WithCallbackData("explain_replies"),
 			),
+			tu.InlineKeyboardRow(
+				tu.InlineKeyboardButton(utils.Messages[lang]["btn_voices_info"]).WithCallbackData("explain_voices"),
+			),
 		)
 
 		_, _ = bot.EditMessageText(context.Background(), &telego.EditMessageTextParams{
@@ -138,7 +166,6 @@ func BackToHelpHandler(bot *telego.Bot) th.Handler {
 			ReplyMarkup: keyboard,
 			ParseMode:   telego.ModeMarkdown,
 		})
-
 		_ = bot.AnswerCallbackQuery(context.Background(), &telego.AnswerCallbackQueryParams{
 			CallbackQueryID: cb.ID,
 		})

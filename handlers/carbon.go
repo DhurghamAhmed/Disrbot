@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"disrbot/utils"
-	"strings" 
+	"strings"
 
 	"github.com/mymmrac/telego"
 	th "github.com/mymmrac/telego/telegohandler"
@@ -24,7 +24,7 @@ func CarbonHandler(bot *telego.Bot) th.Handler {
 		code = strings.TrimPrefix(code, "/carbon")
 		code = strings.TrimPrefix(code, "carbon")
 		code = strings.TrimPrefix(code, "كاربون")
-		code = strings.TrimSpace(code) 
+		code = strings.TrimSpace(code)
 
 		if code == "" {
 			_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
@@ -51,8 +51,8 @@ func CarbonHandler(bot *telego.Bot) th.Handler {
 		}
 
 		_, _ = bot.SendPhoto(context.Background(), &telego.SendPhotoParams{
-			ChatID: tu.ID(msg.Chat.ID),
-			Photo:  tu.FileFromReader(bytes.NewReader(imageBytes), "carbon.png"),
+			ChatID:  tu.ID(msg.Chat.ID),
+			Photo:   tu.FileFromReader(bytes.NewReader(imageBytes), "carbon.png"),
 			Caption: "Done!",
 		})
 
