@@ -165,49 +165,64 @@ func InlineVoiceHandler(bot *telego.Bot) th.Handler {
 		}
 
 		rawQuery := strings.TrimSpace(query.Query)
-
-		if !strings.HasPrefix(strings.ToLower(rawQuery), "aud") {
-			_ = bot.AnswerInlineQuery(context.Background(), &telego.AnswerInlineQueryParams{
-				InlineQueryID: query.ID,
-				Results:       []telego.InlineQueryResult{},
-				CacheTime:     1,
-			})
-			return nil
-		}
-
-		searchText := strings.ToLower(strings.TrimSpace(rawQuery[3:]))
-
-		names, err := utils.RDB.SMembers(context.Background(), globalVoiceNamesKey).Result()
-		if err != nil || len(names) == 0 {
-			_ = bot.AnswerInlineQuery(context.Background(), &telego.AnswerInlineQueryParams{
-				InlineQueryID: query.ID,
-				Results:       []telego.InlineQueryResult{},
-				CacheTime:     1,
-			})
-			return nil
-		}
+		lowerQuery := strings.ToLower(rawQuery)
 
 		var results []telego.InlineQueryResult
 
-		for _, name := range names {
-			if searchText != "" && !strings.Contains(name, searchText) {
-				continue
+		if strings.HasPrefix(lowerQuery, "aud") {
+			searchText := strings.ToLower(strings.TrimSpace(rawQuery[3:]))
+
+			names, err := utils.RDB.SMembers(context.Background(), globalVoiceNamesKey).Result()
+			if err == nil && len(names) > 0 {
+				for _, name := range names {
+					if searchText != "" && !strings.Contains(name, searchText) {
+						continue
+					}
+
+					fileID, err := utils.RDB.Get(context.Background(), globalVoiceKey(name)).Result()
+					if err != nil {
+						continue
+					}
+
+					results = append(results, &telego.InlineQueryResultCachedVoice{
+						Type:        telego.ResultTypeVoice,
+						ID:          name,
+						VoiceFileID: fileID,
+						Title:       name,
+					})
+
+					if len(results) >= 50 {
+						break
+					}
+				}
 			}
+		} else if strings.HasPrefix(lowerQuery, "ipa") {
+			searchText := strings.ToLower(strings.TrimSpace(rawQuery[3:]))
 
-			fileID, err := utils.RDB.Get(context.Background(), globalVoiceKey(name)).Result()
-			if err != nil {
-				continue
-			}
+			names, err := utils.RDB.SMembers(context.Background(), globalIpaNamesKey).Result()
+			if err == nil && len(names) > 0 {
+				for _, name := range names {
+					if searchText != "" && !strings.Contains(name, searchText) {
+						continue
+					}
 
-			results = append(results, &telego.InlineQueryResultCachedVoice{
-				Type:        telego.ResultTypeVoice,
-				ID:          name,
-				VoiceFileID: fileID,
-				Title:       name,
-			})
+					fileID, err := utils.RDB.Get(context.Background(), globalIpaKey(name)).Result()
+					if err != nil {
+						continue
+					}
 
-			if len(results) >= 50 {
-				break
+					results = append(results, &telego.InlineQueryResultCachedDocument{
+						Type:           telego.ResultTypeDocument,
+						ID:             "ipa_" + name,
+						DocumentFileID: fileID,
+						Title:          name,
+						Description:    name + ".ipa",
+					})
+
+					if len(results) >= 50 {
+						break
+					}
+				}
 			}
 		}
 

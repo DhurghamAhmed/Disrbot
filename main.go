@@ -73,7 +73,6 @@ func main() {
 	bh.Handle(handlers.ListIpaHandler(bot), th.CommandEqual("listipa"))
 
 	bh.Handle(handlers.InlineVoiceHandler(bot), th.AnyInlineQuery())
-	bh.Handle(handlers.InlineIpaHandler(bot), th.AnyInlineQuery())
 
 	bh.Handle(handlers.StateHandler(bot), th.AnyMessage())
 
