@@ -1,18 +1,15 @@
 package handlers
 
 import (
-	"context"
 	"disrbot/utils"
 	"fmt"
 
 	"github.com/mymmrac/telego"
 	th "github.com/mymmrac/telego/telegohandler"
-	tu "github.com/mymmrac/telego/telegoutil"
 )
 
 func IDHandler(bot *telego.Bot) th.Handler {
 	return func(ctx *th.Context, update telego.Update) error {
-
 		msg := update.Message
 		if msg == nil {
 			return nil
@@ -20,19 +17,15 @@ func IDHandler(bot *telego.Bot) th.Handler {
 
 		lang := utils.GetLang(msg.From.ID)
 
-		var targetUser *telego.User
-
+		targetUser := msg.From
 		if msg.ReplyToMessage != nil {
 			targetUser = msg.ReplyToMessage.From
-		} else {
-			targetUser = msg.From
 		}
 
 		username := "None"
 		if lang == "ar" {
 			username = "لا يوجد"
 		}
-
 		if targetUser.Username != "" {
 			username = "@" + targetUser.Username
 		}
@@ -47,12 +40,7 @@ func IDHandler(bot *telego.Bot) th.Handler {
 			targetLang,
 		)
 
-		_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
-			ChatID:    tu.ID(msg.Chat.ID),
-			Text:      res,
-			ParseMode: telego.ModeMarkdown,
-		})
-
+		sendText(bot, msg.Chat.ID, res)
 		return nil
 	}
 }

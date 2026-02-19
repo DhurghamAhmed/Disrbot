@@ -14,37 +14,24 @@ func HelpHandler(bot *telego.Bot) th.Handler {
 		userID := update.Message.From.ID
 		lang := utils.GetLang(userID)
 
-		keyboard := tu.InlineKeyboard(
-			tu.InlineKeyboardRow(
-				tu.InlineKeyboardButton(utils.Messages[lang]["btn_id_info"]).WithCallbackData("explain_id"),
-			),
-			tu.InlineKeyboardRow(
-				tu.InlineKeyboardButton(utils.Messages[lang]["btn_carbon_info"]).WithCallbackData("explain_carbon"),
-			),
-			tu.InlineKeyboardRow(
-				tu.InlineKeyboardButton(utils.Messages[lang]["btn_replies_info"]).WithCallbackData("explain_replies"),
-			),
-			tu.InlineKeyboardRow(
-				tu.InlineKeyboardButton(utils.Messages[lang]["btn_voices_info"]).WithCallbackData("explain_voices"),
-			),
-		)
-
 		_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
 			ChatID:      tu.ID(update.Message.Chat.ID),
 			Text:        utils.Messages[lang]["help_main"],
-			ReplyMarkup: keyboard,
+			ReplyMarkup: helpKeyboard(lang),
 			ParseMode:   telego.ModeMarkdown,
 		})
 		return nil
 	}
 }
 
-func ExplainIDHandler(bot *telego.Bot) th.Handler {
+// explainHandler is a generic factory for all "explain" callback handlers.
+// Each explain button shows a specific message with a "back" button.
+func explainHandler(bot *telego.Bot, messageKey string) th.Handler {
 	return func(ctx *th.Context, update telego.Update) error {
 		cb := update.CallbackQuery
 		lang := utils.GetLang(cb.From.ID)
 
-		keyboard := tu.InlineKeyboard(
+		backKeyboard := tu.InlineKeyboard(
 			tu.InlineKeyboardRow(
 				tu.InlineKeyboardButton(utils.Messages[lang]["back_btn"]).WithCallbackData("back_to_help"),
 			),
@@ -53,8 +40,8 @@ func ExplainIDHandler(bot *telego.Bot) th.Handler {
 		_, _ = bot.EditMessageText(context.Background(), &telego.EditMessageTextParams{
 			ChatID:      tu.ID(cb.Message.GetChat().ID),
 			MessageID:   cb.Message.GetMessageID(),
-			Text:        utils.Messages[lang]["id_description"],
-			ReplyMarkup: keyboard,
+			Text:        utils.Messages[lang][messageKey],
+			ReplyMarkup: backKeyboard,
 			ParseMode:   telego.ModeMarkdown,
 		})
 		_ = bot.AnswerCallbackQuery(context.Background(), &telego.AnswerCallbackQueryParams{
@@ -64,79 +51,15 @@ func ExplainIDHandler(bot *telego.Bot) th.Handler {
 	}
 }
 
+func ExplainIDHandler(bot *telego.Bot) th.Handler { return explainHandler(bot, "id_description") }
 func ExplainCarbonHandler(bot *telego.Bot) th.Handler {
-	return func(ctx *th.Context, update telego.Update) error {
-		cb := update.CallbackQuery
-		lang := utils.GetLang(cb.From.ID)
-
-		keyboard := tu.InlineKeyboard(
-			tu.InlineKeyboardRow(
-				tu.InlineKeyboardButton(utils.Messages[lang]["back_btn"]).WithCallbackData("back_to_help"),
-			),
-		)
-
-		_, _ = bot.EditMessageText(context.Background(), &telego.EditMessageTextParams{
-			ChatID:      tu.ID(cb.Message.GetChat().ID),
-			MessageID:   cb.Message.GetMessageID(),
-			Text:        utils.Messages[lang]["carbon_description"],
-			ReplyMarkup: keyboard,
-			ParseMode:   telego.ModeMarkdown,
-		})
-		_ = bot.AnswerCallbackQuery(context.Background(), &telego.AnswerCallbackQueryParams{
-			CallbackQueryID: cb.ID,
-		})
-		return nil
-	}
+	return explainHandler(bot, "carbon_description")
 }
-
 func ExplainRepliesHandler(bot *telego.Bot) th.Handler {
-	return func(ctx *th.Context, update telego.Update) error {
-		cb := update.CallbackQuery
-		lang := utils.GetLang(cb.From.ID)
-
-		keyboard := tu.InlineKeyboard(
-			tu.InlineKeyboardRow(
-				tu.InlineKeyboardButton(utils.Messages[lang]["back_btn"]).WithCallbackData("back_to_help"),
-			),
-		)
-
-		_, _ = bot.EditMessageText(context.Background(), &telego.EditMessageTextParams{
-			ChatID:      tu.ID(cb.Message.GetChat().ID),
-			MessageID:   cb.Message.GetMessageID(),
-			Text:        utils.Messages[lang]["replies_description"],
-			ReplyMarkup: keyboard,
-			ParseMode:   telego.ModeMarkdown,
-		})
-		_ = bot.AnswerCallbackQuery(context.Background(), &telego.AnswerCallbackQueryParams{
-			CallbackQueryID: cb.ID,
-		})
-		return nil
-	}
+	return explainHandler(bot, "replies_description")
 }
-
 func ExplainVoicesHandler(bot *telego.Bot) th.Handler {
-	return func(ctx *th.Context, update telego.Update) error {
-		cb := update.CallbackQuery
-		lang := utils.GetLang(cb.From.ID)
-
-		keyboard := tu.InlineKeyboard(
-			tu.InlineKeyboardRow(
-				tu.InlineKeyboardButton(utils.Messages[lang]["back_btn"]).WithCallbackData("back_to_help"),
-			),
-		)
-
-		_, _ = bot.EditMessageText(context.Background(), &telego.EditMessageTextParams{
-			ChatID:      tu.ID(cb.Message.GetChat().ID),
-			MessageID:   cb.Message.GetMessageID(),
-			Text:        utils.Messages[lang]["voices_description"],
-			ReplyMarkup: keyboard,
-			ParseMode:   telego.ModeMarkdown,
-		})
-		_ = bot.AnswerCallbackQuery(context.Background(), &telego.AnswerCallbackQueryParams{
-			CallbackQueryID: cb.ID,
-		})
-		return nil
-	}
+	return explainHandler(bot, "voices_description")
 }
 
 func BackToHelpHandler(bot *telego.Bot) th.Handler {
@@ -144,26 +67,11 @@ func BackToHelpHandler(bot *telego.Bot) th.Handler {
 		cb := update.CallbackQuery
 		lang := utils.GetLang(cb.From.ID)
 
-		keyboard := tu.InlineKeyboard(
-			tu.InlineKeyboardRow(
-				tu.InlineKeyboardButton(utils.Messages[lang]["btn_id_info"]).WithCallbackData("explain_id"),
-			),
-			tu.InlineKeyboardRow(
-				tu.InlineKeyboardButton(utils.Messages[lang]["btn_carbon_info"]).WithCallbackData("explain_carbon"),
-			),
-			tu.InlineKeyboardRow(
-				tu.InlineKeyboardButton(utils.Messages[lang]["btn_replies_info"]).WithCallbackData("explain_replies"),
-			),
-			tu.InlineKeyboardRow(
-				tu.InlineKeyboardButton(utils.Messages[lang]["btn_voices_info"]).WithCallbackData("explain_voices"),
-			),
-		)
-
 		_, _ = bot.EditMessageText(context.Background(), &telego.EditMessageTextParams{
 			ChatID:      tu.ID(cb.Message.GetChat().ID),
 			MessageID:   cb.Message.GetMessageID(),
 			Text:        utils.Messages[lang]["help_main"],
-			ReplyMarkup: keyboard,
+			ReplyMarkup: helpKeyboard(lang),
 			ParseMode:   telego.ModeMarkdown,
 		})
 		_ = bot.AnswerCallbackQuery(context.Background(), &telego.AnswerCallbackQueryParams{

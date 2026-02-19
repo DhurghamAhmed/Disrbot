@@ -27,11 +27,7 @@ func CarbonHandler(bot *telego.Bot) th.Handler {
 		code = strings.TrimSpace(code)
 
 		if code == "" {
-			_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
-				ChatID:    tu.ID(msg.Chat.ID),
-				Text:      utils.Messages[lang]["carbon_description"],
-				ParseMode: telego.ModeMarkdown,
-			})
+			sendText(bot, msg.Chat.ID, utils.Messages[lang]["carbon_description"])
 			return nil
 		}
 

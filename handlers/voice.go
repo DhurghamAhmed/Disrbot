@@ -2,20 +2,16 @@ package handlers
 
 import (
 	"context"
+	"crypto/md5"
 	"disrbot/utils"
 	"fmt"
 	"strings"
 
 	"github.com/mymmrac/telego"
 	th "github.com/mymmrac/telego/telegohandler"
-	tu "github.com/mymmrac/telego/telegoutil"
 )
 
-func globalVoiceKey(name string) string {
-	return fmt.Sprintf("voice:global:%s", name)
-}
-
-const globalVoiceNamesKey = "voice_names:global"
+// (Moved helpers to utils/redis.go)
 
 func AddVoiceHandler(bot *telego.Bot) th.Handler {
 	return func(ctx *th.Context, update telego.Update) error {
@@ -25,38 +21,24 @@ func AddVoiceHandler(bot *telego.Bot) th.Handler {
 		}
 		lang := utils.GetLang(msg.From.ID)
 
-		if !utils.IsAdmin(msg.From.ID) {
-			_, _ = bot.SendMessage(context.Background(), tu.Message(tu.ID(msg.Chat.ID), utils.Messages[lang]["not_admin"]))
+		if !requireAdmin(bot, msg, lang) {
 			return nil
 		}
 
 		if msg.ReplyToMessage == nil {
-			_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
-				ChatID:    tu.ID(msg.Chat.ID),
-				Text:      utils.Messages[lang]["addvoice_reply_required"],
-				ParseMode: telego.ModeMarkdown,
-			})
+			sendText(bot, msg.Chat.ID, utils.Messages[lang]["addvoice_reply_required"])
 			return nil
 		}
 
 		reply := msg.ReplyToMessage
-
 		if reply.Voice == nil && reply.Audio == nil {
-			_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
-				ChatID:    tu.ID(msg.Chat.ID),
-				Text:      utils.Messages[lang]["addvoice_voice_required"],
-				ParseMode: telego.ModeMarkdown,
-			})
+			sendText(bot, msg.Chat.ID, utils.Messages[lang]["addvoice_voice_required"])
 			return nil
 		}
 
 		name := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/addvoice"))
 		if name == "" {
-			_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
-				ChatID:    tu.ID(msg.Chat.ID),
-				Text:      utils.Messages[lang]["addvoice_name_required"],
-				ParseMode: telego.ModeMarkdown,
-			})
+			sendText(bot, msg.Chat.ID, utils.Messages[lang]["addvoice_name_required"])
 			return nil
 		}
 
@@ -68,16 +50,11 @@ func AddVoiceHandler(bot *telego.Bot) th.Handler {
 		}
 
 		nameLower := strings.ToLower(name)
-
-		utils.RDB.Set(context.Background(), globalVoiceKey(nameLower), fileID, 0)
-		utils.RDB.SAdd(context.Background(), globalVoiceNamesKey, nameLower)
+		utils.RDB.Set(context.Background(), utils.GlobalVoiceKey(nameLower), fileID, 0)
+		utils.RDB.SAdd(context.Background(), utils.GlobalVoiceNamesKey, nameLower)
 
 		response := fmt.Sprintf(utils.Messages[lang]["addvoice_success"], name)
-		_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
-			ChatID:    tu.ID(msg.Chat.ID),
-			Text:      response,
-			ParseMode: telego.ModeMarkdown,
-		})
+		sendText(bot, msg.Chat.ID, response)
 		return nil
 	}
 }
@@ -90,35 +67,29 @@ func DelVoiceHandler(bot *telego.Bot) th.Handler {
 		}
 		lang := utils.GetLang(msg.From.ID)
 
-		if !utils.IsAdmin(msg.From.ID) {
-			_, _ = bot.SendMessage(context.Background(), tu.Message(tu.ID(msg.Chat.ID), utils.Messages[lang]["not_admin"]))
+		if !requireAdmin(bot, msg, lang) {
 			return nil
 		}
 
 		name := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/delvoice"))
 		if name == "" {
-			_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
-				ChatID:    tu.ID(msg.Chat.ID),
-				Text:      utils.Messages[lang]["delvoice_usage"],
-				ParseMode: telego.ModeMarkdown,
-			})
+			sendText(bot, msg.Chat.ID, utils.Messages[lang]["delvoice_usage"])
 			return nil
 		}
 
 		nameLower := strings.ToLower(name)
-
-		exists, _ := utils.RDB.Exists(context.Background(), globalVoiceKey(nameLower)).Result()
+		exists, _ := utils.RDB.Exists(context.Background(), utils.GlobalVoiceKey(nameLower)).Result()
 		if exists == 0 {
 			response := fmt.Sprintf(utils.Messages[lang]["delvoice_notfound"], name)
-			_, _ = bot.SendMessage(context.Background(), tu.Message(tu.ID(msg.Chat.ID), response))
+			sendTextPlain(bot, msg.Chat.ID, response)
 			return nil
 		}
 
-		utils.RDB.Del(context.Background(), globalVoiceKey(nameLower))
-		utils.RDB.SRem(context.Background(), globalVoiceNamesKey, nameLower)
+		utils.RDB.Del(context.Background(), utils.GlobalVoiceKey(nameLower))
+		utils.RDB.SRem(context.Background(), utils.GlobalVoiceNamesKey, nameLower)
 
 		response := fmt.Sprintf(utils.Messages[lang]["delvoice_success"], name)
-		_, _ = bot.SendMessage(context.Background(), tu.Message(tu.ID(msg.Chat.ID), response))
+		sendTextPlain(bot, msg.Chat.ID, response)
 		return nil
 	}
 }
@@ -131,14 +102,13 @@ func ListVoicesHandler(bot *telego.Bot) th.Handler {
 		}
 		lang := utils.GetLang(msg.From.ID)
 
-		if !utils.IsAdmin(msg.From.ID) {
-			_, _ = bot.SendMessage(context.Background(), tu.Message(tu.ID(msg.Chat.ID), utils.Messages[lang]["not_admin"]))
+		if !requireAdmin(bot, msg, lang) {
 			return nil
 		}
 
-		names, err := utils.RDB.SMembers(context.Background(), globalVoiceNamesKey).Result()
+		names, err := utils.RDB.SMembers(context.Background(), utils.GlobalVoiceNamesKey).Result()
 		if err != nil || len(names) == 0 {
-			_, _ = bot.SendMessage(context.Background(), tu.Message(tu.ID(msg.Chat.ID), utils.Messages[lang]["listvoices_empty"]))
+			sendTextPlain(bot, msg.Chat.ID, utils.Messages[lang]["listvoices_empty"])
 			return nil
 		}
 
@@ -148,15 +118,13 @@ func ListVoicesHandler(bot *telego.Bot) th.Handler {
 		for i, name := range names {
 			sb.WriteString(fmt.Sprintf("%d. `%s`\n", i+1, name))
 		}
-		_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
-			ChatID:    tu.ID(msg.Chat.ID),
-			Text:      sb.String(),
-			ParseMode: telego.ModeMarkdown,
-		})
+		sendText(bot, msg.Chat.ID, sb.String())
 		return nil
 	}
 }
 
+// InlineVoiceHandler handles inline queries for both voices ("aud" prefix)
+// and IPA files ("ipa" prefix).
 func InlineVoiceHandler(bot *telego.Bot) th.Handler {
 	return func(ctx *th.Context, update telego.Update) error {
 		query := update.InlineQuery
@@ -166,64 +134,29 @@ func InlineVoiceHandler(bot *telego.Bot) th.Handler {
 
 		rawQuery := strings.TrimSpace(query.Query)
 		lowerQuery := strings.ToLower(rawQuery)
+		lang := utils.GetLang(query.From.ID)
 
 		var results []telego.InlineQueryResult
 
-		if strings.HasPrefix(lowerQuery, "aud") {
-			searchText := strings.ToLower(strings.TrimSpace(rawQuery[3:]))
+		// If query is empty, show help result
+		if lowerQuery == "" {
+			results = append(results, &telego.InlineQueryResultArticle{
+				Type:        telego.ResultTypeArticle,
+				ID:          "inline_help",
+				Title:       utils.Messages[lang]["inline_help_title"],
+				Description: utils.Messages[lang]["inline_help_desc"],
+				InputMessageContent: &telego.InputTextMessageContent{
+					MessageText: utils.Messages[lang]["inline_help_text"],
+					ParseMode:   telego.ModeMarkdown,
+				},
+			})
+		}
 
-			names, err := utils.RDB.SMembers(context.Background(), globalVoiceNamesKey).Result()
-			if err == nil && len(names) > 0 {
-				for _, name := range names {
-					if searchText != "" && !strings.Contains(name, searchText) {
-						continue
-					}
-
-					fileID, err := utils.RDB.Get(context.Background(), globalVoiceKey(name)).Result()
-					if err != nil {
-						continue
-					}
-
-					results = append(results, &telego.InlineQueryResultCachedVoice{
-						Type:        telego.ResultTypeVoice,
-						ID:          name,
-						VoiceFileID: fileID,
-						Title:       name,
-					})
-
-					if len(results) >= 50 {
-						break
-					}
-				}
-			}
-		} else if strings.HasPrefix(lowerQuery, "ipa") {
-			searchText := strings.ToLower(strings.TrimSpace(rawQuery[3:]))
-
-			names, err := utils.RDB.SMembers(context.Background(), globalIpaNamesKey).Result()
-			if err == nil && len(names) > 0 {
-				for _, name := range names {
-					if searchText != "" && !strings.Contains(name, searchText) {
-						continue
-					}
-
-					fileID, err := utils.RDB.Get(context.Background(), globalIpaKey(name)).Result()
-					if err != nil {
-						continue
-					}
-
-					results = append(results, &telego.InlineQueryResultCachedDocument{
-						Type:           telego.ResultTypeDocument,
-						ID:             "ipa_" + name,
-						DocumentFileID: fileID,
-						Title:          name,
-						Description:    name + ".ipa",
-					})
-
-					if len(results) >= 50 {
-						break
-					}
-				}
-			}
+		switch {
+		case strings.HasPrefix(lowerQuery, "aud"):
+			results = searchVoices(rawQuery[3:])
+		case strings.HasPrefix(lowerQuery, "ipa"):
+			results = searchIPAs(rawQuery[3:])
 		}
 
 		_ = bot.AnswerInlineQuery(context.Background(), &telego.AnswerInlineQueryParams{
@@ -233,4 +166,71 @@ func InlineVoiceHandler(bot *telego.Bot) th.Handler {
 		})
 		return nil
 	}
+}
+
+func searchVoices(rawSearch string) []telego.InlineQueryResult {
+	searchText := strings.ToLower(strings.TrimSpace(rawSearch))
+
+	names, err := utils.RDB.SMembers(context.Background(), utils.GlobalVoiceNamesKey).Result()
+	if err != nil || len(names) == 0 {
+		return nil
+	}
+
+	var results []telego.InlineQueryResult
+	for _, name := range names {
+		if searchText != "" && !strings.Contains(name, searchText) {
+			continue
+		}
+
+		fileID, err := utils.RDB.Get(context.Background(), utils.GlobalVoiceKey(name)).Result()
+		if err != nil {
+			continue
+		}
+
+		results = append(results, &telego.InlineQueryResultCachedVoice{
+			Type:        telego.ResultTypeVoice,
+			ID:          fmt.Sprintf("%x", md5.Sum([]byte("voice_"+name))),
+			VoiceFileID: fileID,
+			Title:       name,
+		})
+
+		if len(results) >= 50 {
+			break
+		}
+	}
+	return results
+}
+
+func searchIPAs(rawSearch string) []telego.InlineQueryResult {
+	searchText := strings.ToLower(strings.TrimSpace(rawSearch))
+
+	names, err := utils.RDB.SMembers(context.Background(), utils.GlobalIpaNamesKey).Result()
+	if err != nil || len(names) == 0 {
+		return nil
+	}
+
+	var results []telego.InlineQueryResult
+	for _, name := range names {
+		if searchText != "" && !strings.Contains(name, searchText) {
+			continue
+		}
+
+		fileID, err := utils.RDB.Get(context.Background(), utils.GlobalIpaKey(name)).Result()
+		if err != nil {
+			continue
+		}
+
+		results = append(results, &telego.InlineQueryResultCachedDocument{
+			Type:           telego.ResultTypeDocument,
+			ID:             fmt.Sprintf("%x", md5.Sum([]byte("ipa_"+name))),
+			DocumentFileID: fileID,
+			Title:          name,
+			Description:    name + ".ipa",
+		})
+
+		if len(results) >= 50 {
+			break
+		}
+	}
+	return results
 }

@@ -5,20 +5,34 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 )
 
-func IsAdmin(userID int64) bool {
-	adminIDsStr := os.Getenv("ADMIN_IDS")
-	if adminIDsStr == "" {
-		return false
-	}
+var (
+	adminIDs  []int64
+	adminOnce sync.Once
+)
 
-	ids := strings.Split(adminIDsStr, ",")
-	for _, idStr := range ids {
-		id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
-		if err != nil {
-			continue
+// loadAdminIDs parses ADMIN_IDS env once and caches the result.
+func loadAdminIDs() {
+	adminOnce.Do(func() {
+		raw := os.Getenv("ADMIN_IDS")
+		if raw == "" {
+			return
 		}
+		for _, s := range strings.Split(raw, ",") {
+			id, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+			if err != nil {
+				continue
+			}
+			adminIDs = append(adminIDs, id)
+		}
+	})
+}
+
+func IsAdmin(userID int64) bool {
+	loadAdminIDs()
+	for _, id := range adminIDs {
 		if id == userID {
 			return true
 		}
@@ -27,20 +41,8 @@ func IsAdmin(userID int64) bool {
 }
 
 func GetAdminIDs() []int64 {
-	adminIDsStr := os.Getenv("ADMIN_IDS")
-	if adminIDsStr == "" {
-		return nil
-	}
-
-	var ids []int64
-	for _, idStr := range strings.Split(adminIDsStr, ",") {
-		id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
-		if err != nil {
-			continue
-		}
-		ids = append(ids, id)
-	}
-	return ids
+	loadAdminIDs()
+	return adminIDs
 }
 
 func FormatAdminList() string {

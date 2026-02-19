@@ -8,14 +8,9 @@ import (
 
 	"github.com/mymmrac/telego"
 	th "github.com/mymmrac/telego/telegohandler"
-	tu "github.com/mymmrac/telego/telegoutil"
 )
 
-func globalIpaKey(name string) string {
-	return fmt.Sprintf("ipa:global:%s", name)
-}
-
-const globalIpaNamesKey = "ipa_names:global"
+// (Moved helpers to utils/redis.go)
 
 func AddIpaHandler(bot *telego.Bot) th.Handler {
 	return func(ctx *th.Context, update telego.Update) error {
@@ -25,62 +20,51 @@ func AddIpaHandler(bot *telego.Bot) th.Handler {
 		}
 		lang := utils.GetLang(msg.From.ID)
 
-		if !utils.IsAdmin(msg.From.ID) {
-			_, _ = bot.SendMessage(context.Background(), tu.Message(tu.ID(msg.Chat.ID), utils.Messages[lang]["not_admin"]))
-			return nil
-		}
-
-		if msg.ReplyToMessage == nil {
-			_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
-				ChatID:    tu.ID(msg.Chat.ID),
-				Text:      utils.Messages[lang]["addipa_reply_required"],
-				ParseMode: telego.ModeMarkdown,
-			})
-			return nil
-		}
-
-		reply := msg.ReplyToMessage
-
-		if reply.Document == nil {
-			_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
-				ChatID:    tu.ID(msg.Chat.ID),
-				Text:      utils.Messages[lang]["addipa_doc_required"],
-				ParseMode: telego.ModeMarkdown,
-			})
-			return nil
-		}
-
-		doc := reply.Document
-		if !strings.HasSuffix(strings.ToLower(doc.FileName), ".ipa") {
-			_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
-				ChatID:    tu.ID(msg.Chat.ID),
-				Text:      utils.Messages[lang]["addipa_ipa_required"],
-				ParseMode: telego.ModeMarkdown,
-			})
+		if !requireAdmin(bot, msg, lang) {
 			return nil
 		}
 
 		name := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/addipa"))
-		if name == "" {
-			_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
-				ChatID:    tu.ID(msg.Chat.ID),
-				Text:      utils.Messages[lang]["addipa_name_required"],
-				ParseMode: telego.ModeMarkdown,
-			})
+		var doc *telego.Document
+
+		// 1. Check if it's a reply with a document
+		if msg.ReplyToMessage != nil && msg.ReplyToMessage.Document != nil {
+			doc = msg.ReplyToMessage.Document
+		}
+
+		// 2. Check if the message itself has a document (caption)
+		if doc == nil && msg.Document != nil {
+			doc = msg.Document
+		}
+
+		// 3. If no document found, enter state to wait for it
+		if doc == nil {
+			utils.RDB.Set(context.Background(), stateKey(msg.From.ID), "addipa_step1", 0)
+			utils.RDB.Set(context.Background(), stateDataKey(msg.From.ID), name, 0)
+			sendText(bot, msg.Chat.ID, utils.Messages[lang]["addipa_ask_doc"])
 			return nil
 		}
 
-		nameLower := strings.ToLower(name)
+		if !strings.HasSuffix(strings.ToLower(doc.FileName), ".ipa") {
+			sendText(bot, msg.Chat.ID, utils.Messages[lang]["addipa_ipa_required"])
+			return nil
+		}
 
-		utils.RDB.Set(context.Background(), globalIpaKey(nameLower), doc.FileID, 0)
-		utils.RDB.SAdd(context.Background(), globalIpaNamesKey, nameLower)
+		if name == "" {
+			name = strings.TrimSuffix(doc.FileName, ".ipa")
+			name = strings.TrimSuffix(name, ".IPA")
+			if name == "" {
+				sendText(bot, msg.Chat.ID, utils.Messages[lang]["addipa_name_required"])
+				return nil
+			}
+		}
+
+		nameLower := strings.ToLower(name)
+		utils.RDB.Set(context.Background(), utils.GlobalIpaKey(nameLower), doc.FileID, 0)
+		utils.RDB.SAdd(context.Background(), utils.GlobalIpaNamesKey, nameLower)
 
 		response := fmt.Sprintf(utils.Messages[lang]["addipa_success"], name)
-		_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
-			ChatID:    tu.ID(msg.Chat.ID),
-			Text:      response,
-			ParseMode: telego.ModeMarkdown,
-		})
+		sendText(bot, msg.Chat.ID, response)
 		return nil
 	}
 }
@@ -93,34 +77,29 @@ func DelIpaHandler(bot *telego.Bot) th.Handler {
 		}
 		lang := utils.GetLang(msg.From.ID)
 
-		if !utils.IsAdmin(msg.From.ID) {
-			_, _ = bot.SendMessage(context.Background(), tu.Message(tu.ID(msg.Chat.ID), utils.Messages[lang]["not_admin"]))
+		if !requireAdmin(bot, msg, lang) {
 			return nil
 		}
 
 		name := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/delipa"))
 		if name == "" {
-			_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
-				ChatID:    tu.ID(msg.Chat.ID),
-				Text:      utils.Messages[lang]["delipa_usage"],
-				ParseMode: telego.ModeMarkdown,
-			})
+			sendText(bot, msg.Chat.ID, utils.Messages[lang]["delipa_usage"])
 			return nil
 		}
 
 		nameLower := strings.ToLower(name)
-		exists, _ := utils.RDB.Exists(context.Background(), globalIpaKey(nameLower)).Result()
+		exists, _ := utils.RDB.Exists(context.Background(), utils.GlobalIpaKey(nameLower)).Result()
 		if exists == 0 {
 			response := fmt.Sprintf(utils.Messages[lang]["delipa_notfound"], name)
-			_, _ = bot.SendMessage(context.Background(), tu.Message(tu.ID(msg.Chat.ID), response))
+			sendTextPlain(bot, msg.Chat.ID, response)
 			return nil
 		}
 
-		utils.RDB.Del(context.Background(), globalIpaKey(nameLower))
-		utils.RDB.SRem(context.Background(), globalIpaNamesKey, nameLower)
+		utils.RDB.Del(context.Background(), utils.GlobalIpaKey(nameLower))
+		utils.RDB.SRem(context.Background(), utils.GlobalIpaNamesKey, nameLower)
 
 		response := fmt.Sprintf(utils.Messages[lang]["delipa_success"], name)
-		_, _ = bot.SendMessage(context.Background(), tu.Message(tu.ID(msg.Chat.ID), response))
+		sendTextPlain(bot, msg.Chat.ID, response)
 		return nil
 	}
 }
@@ -133,14 +112,13 @@ func ListIpaHandler(bot *telego.Bot) th.Handler {
 		}
 		lang := utils.GetLang(msg.From.ID)
 
-		if !utils.IsAdmin(msg.From.ID) {
-			_, _ = bot.SendMessage(context.Background(), tu.Message(tu.ID(msg.Chat.ID), utils.Messages[lang]["not_admin"]))
+		if !requireAdmin(bot, msg, lang) {
 			return nil
 		}
 
-		names, err := utils.RDB.SMembers(context.Background(), globalIpaNamesKey).Result()
+		names, err := utils.RDB.SMembers(context.Background(), utils.GlobalIpaNamesKey).Result()
 		if err != nil || len(names) == 0 {
-			_, _ = bot.SendMessage(context.Background(), tu.Message(tu.ID(msg.Chat.ID), utils.Messages[lang]["listipa_empty"]))
+			sendTextPlain(bot, msg.Chat.ID, utils.Messages[lang]["listipa_empty"])
 			return nil
 		}
 
@@ -150,75 +128,7 @@ func ListIpaHandler(bot *telego.Bot) th.Handler {
 		for i, name := range names {
 			sb.WriteString(fmt.Sprintf("%d. `%s`\n", i+1, name))
 		}
-		_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
-			ChatID:    tu.ID(msg.Chat.ID),
-			Text:      sb.String(),
-			ParseMode: telego.ModeMarkdown,
-		})
-		return nil
-	}
-}
-
-func InlineIpaHandler(bot *telego.Bot) th.Handler {
-	return func(ctx *th.Context, update telego.Update) error {
-		query := update.InlineQuery
-		if query == nil {
-			return nil
-		}
-
-		rawQuery := strings.TrimSpace(query.Query)
-
-		if !strings.HasPrefix(strings.ToLower(rawQuery), "ipa") {
-			_ = bot.AnswerInlineQuery(context.Background(), &telego.AnswerInlineQueryParams{
-				InlineQueryID: query.ID,
-				Results:       []telego.InlineQueryResult{},
-				CacheTime:     1,
-			})
-			return nil
-		}
-
-		searchText := strings.ToLower(strings.TrimSpace(rawQuery[3:]))
-
-		names, err := utils.RDB.SMembers(context.Background(), globalIpaNamesKey).Result()
-		if err != nil || len(names) == 0 {
-			_ = bot.AnswerInlineQuery(context.Background(), &telego.AnswerInlineQueryParams{
-				InlineQueryID: query.ID,
-				Results:       []telego.InlineQueryResult{},
-				CacheTime:     1,
-			})
-			return nil
-		}
-
-		var results []telego.InlineQueryResult
-
-		for _, name := range names {
-			if searchText != "" && !strings.Contains(name, searchText) {
-				continue
-			}
-
-			fileID, err := utils.RDB.Get(context.Background(), globalIpaKey(name)).Result()
-			if err != nil {
-				continue
-			}
-
-			results = append(results, &telego.InlineQueryResultCachedDocument{
-				Type:           telego.ResultTypeDocument,
-				ID:             "ipa_" + name,
-				DocumentFileID: fileID,
-				Title:          name,
-				Description:    name + ".ipa",
-			})
-
-			if len(results) >= 50 {
-				break
-			}
-		}
-
-		_ = bot.AnswerInlineQuery(context.Background(), &telego.AnswerInlineQueryParams{
-			InlineQueryID: query.ID,
-			Results:       results,
-			CacheTime:     1,
-		})
+		sendText(bot, msg.Chat.ID, sb.String())
 		return nil
 	}
 }
