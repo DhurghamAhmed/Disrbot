@@ -11,16 +11,21 @@ import (
 	tu "github.com/mymmrac/telego/telegoutil"
 )
 
-
-
 func stateKey(userID int64) string     { return fmt.Sprintf("state:%d", userID) }
 func stateDataKey(userID int64) string { return fmt.Sprintf("state_data:%d", userID) }
+
+func replyKey(chatID int64, trigger string) string {
+	return fmt.Sprintf("reply:%d:%s", chatID, trigger)
+}
+
+func triggersKey(chatID int64) string {
+	return fmt.Sprintf("reply_triggers:%d", chatID)
+}
 
 func clearState(userID int64) {
 	utils.RDB.Del(context.Background(), stateKey(userID))
 	utils.RDB.Del(context.Background(), stateDataKey(userID))
 }
-
 
 func AddReplyHandler(bot *telego.Bot) th.Handler {
 	return func(ctx *th.Context, update telego.Update) error {
@@ -37,6 +42,7 @@ func AddReplyHandler(bot *telego.Bot) th.Handler {
 		}
 
 		utils.RDB.Set(context.Background(), stateKey(msg.From.ID), "addreply_step1", 0)
+		utils.RDB.Set(context.Background(), stateDataKey(msg.From.ID), fmt.Sprintf("%d", msg.Chat.ID), 0)
 
 		_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
 			ChatID:    tu.ID(msg.Chat.ID),
@@ -46,7 +52,6 @@ func AddReplyHandler(bot *telego.Bot) th.Handler {
 		return nil
 	}
 }
-
 
 func DelReplyHandler(bot *telego.Bot) th.Handler {
 	return func(ctx *th.Context, update telego.Update) error {
@@ -63,6 +68,7 @@ func DelReplyHandler(bot *telego.Bot) th.Handler {
 		}
 
 		utils.RDB.Set(context.Background(), stateKey(msg.From.ID), "delreply_step1", 0)
+		utils.RDB.Set(context.Background(), stateDataKey(msg.From.ID), fmt.Sprintf("%d", msg.Chat.ID), 0)
 
 		_, _ = bot.SendMessage(context.Background(), &telego.SendMessageParams{
 			ChatID:    tu.ID(msg.Chat.ID),
@@ -87,7 +93,7 @@ func ListRepliesHandler(bot *telego.Bot) th.Handler {
 			return nil
 		}
 
-		triggers, err := utils.RDB.SMembers(context.Background(), "reply_triggers").Result()
+		triggers, err := utils.RDB.SMembers(context.Background(), triggersKey(msg.Chat.ID)).Result()
 		if err != nil || len(triggers) == 0 {
 			_, _ = bot.SendMessage(context.Background(), tu.Message(tu.ID(msg.Chat.ID), utils.Messages[lang]["listreplies_empty"]))
 			return nil
@@ -97,7 +103,7 @@ func ListRepliesHandler(bot *telego.Bot) th.Handler {
 		sb.WriteString(utils.Messages[lang]["listreplies_header"])
 		sb.WriteString("\n\n")
 		for _, trigger := range triggers {
-			reply, _ := utils.RDB.Get(context.Background(), fmt.Sprintf("reply:%s", trigger)).Result()
+			reply, _ := utils.RDB.Get(context.Background(), replyKey(msg.Chat.ID, trigger)).Result()
 			sb.WriteString(fmt.Sprintf("• `%s` ← %s\n", trigger, reply))
 		}
 
@@ -109,7 +115,6 @@ func ListRepliesHandler(bot *telego.Bot) th.Handler {
 		return nil
 	}
 }
-
 
 func StateHandler(bot *telego.Bot) th.Handler {
 	return func(ctx *th.Context, update telego.Update) error {
@@ -132,11 +137,13 @@ func StateHandler(bot *telego.Bot) th.Handler {
 			return nil
 		}
 
+		savedData, _ := utils.RDB.Get(context.Background(), stateDataKey(msg.From.ID)).Result()
+
 		switch state {
 
 		case "addreply_step1":
 			trigger := strings.ToLower(text)
-			utils.RDB.Set(context.Background(), stateDataKey(msg.From.ID), trigger, 0)
+			utils.RDB.Set(context.Background(), stateDataKey(msg.From.ID), fmt.Sprintf("%s:%s", savedData, trigger), 0)
 			utils.RDB.Set(context.Background(), stateKey(msg.From.ID), "addreply_step2", 0)
 
 			response := fmt.Sprintf(utils.Messages[lang]["addreply_ask_reply"], trigger)
@@ -147,11 +154,19 @@ func StateHandler(bot *telego.Bot) th.Handler {
 			})
 
 		case "addreply_step2":
-			trigger, _ := utils.RDB.Get(context.Background(), stateDataKey(msg.From.ID)).Result()
+			parts := strings.SplitN(savedData, ":", 2)
+			if len(parts) != 2 {
+				clearState(msg.From.ID)
+				return nil
+			}
+
+			var chatID int64
+			fmt.Sscanf(parts[0], "%d", &chatID)
+			trigger := parts[1]
 			reply := text
 
-			utils.RDB.Set(context.Background(), fmt.Sprintf("reply:%s", trigger), reply, 0)
-			utils.RDB.SAdd(context.Background(), "reply_triggers", trigger)
+			utils.RDB.Set(context.Background(), replyKey(chatID, trigger), reply, 0)
+			utils.RDB.SAdd(context.Background(), triggersKey(chatID), trigger)
 			clearState(msg.From.ID)
 
 			response := fmt.Sprintf(utils.Messages[lang]["addreply_success"], trigger, reply)
@@ -162,8 +177,10 @@ func StateHandler(bot *telego.Bot) th.Handler {
 			})
 
 		case "delreply_step1":
+			var chatID int64
+			fmt.Sscanf(savedData, "%d", &chatID)
 			trigger := strings.ToLower(text)
-			key := fmt.Sprintf("reply:%s", trigger)
+			key := replyKey(chatID, trigger)
 
 			exists, _ := utils.RDB.Exists(context.Background(), key).Result()
 			if exists == 0 {
@@ -174,7 +191,7 @@ func StateHandler(bot *telego.Bot) th.Handler {
 			}
 
 			utils.RDB.Del(context.Background(), key)
-			utils.RDB.SRem(context.Background(), "reply_triggers", trigger)
+			utils.RDB.SRem(context.Background(), triggersKey(chatID), trigger)
 			clearState(msg.From.ID)
 
 			response := fmt.Sprintf(utils.Messages[lang]["delreply_success"], trigger)
@@ -185,10 +202,10 @@ func StateHandler(bot *telego.Bot) th.Handler {
 	}
 }
 
-
 func checkAutoReply(bot *telego.Bot, msg *telego.Message) error {
 	text := strings.ToLower(strings.TrimSpace(msg.Text))
-	reply, err := utils.RDB.Get(context.Background(), fmt.Sprintf("reply:%s", text)).Result()
+
+	reply, err := utils.RDB.Get(context.Background(), replyKey(msg.Chat.ID, text)).Result()
 	if err != nil {
 		return nil
 	}
